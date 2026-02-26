@@ -37,56 +37,42 @@ Async wrapper for Kling AI and Gemini task creation and polling via PiAPI.
 - Approach: `httpx` async client; POST to create task, GET to poll; linear back-off (5s → 15s, max 60 attempts); raises `APIError` on failure, `TaskTimeoutError` on timeout
 - File: `clients/piapi_client.py`
 
-### Component 4 — Storage Client
-Low-level Cloudflare R2 client (S3-compatible via boto3).
-- Input: object key, bytes, content-type
-- Output: upload confirmation, pre-signed URL
-- Approach: `boto3` with `endpoint_url` pointing to R2; R2 key format `users/{user_id}/{type}/{uuid}/{filename}`; pre-signed URLs (3600s results, 86400s bundles); no trailing slash on endpoint URL
-- File: `clients/storage_client.py`
-
-### Component 5 — Asset Storage Service
-High-level storage operations (upload inputs, results, ZIP bundles).
-- Input: image/video bytes, user_id, task_id
-- Output: public or pre-signed R2 URL
-- Approach: wraps storage client; generates UUIDs for keys; creates ZIP bundles in-memory before uploading; sets ContentType explicitly on every upload
-- File: `services/asset_storage.py`
-
-### Component 6 — Try-On Service
+### Component 4 — Try-On Service
 Orchestrates the full virtual try-on pipeline end to end.
 - Input: user_id, person image URL, garment image URL, garment type
 - Output: result image URL (stored in R2)
 - Approach: fetch inputs from R2 → preprocess → remove garment background → submit to PiAPI Kling → poll → download result → upload to R2 → increment usage counter → return URL
 - File: `services/tryon_service.py`
 
-### Component 7 — Pose Engine
+### Component 5 — Pose Engine
 Manages named pose variations for multi-pose generation.
 - Input: pose key string
 - Output: text prompt string for PiAPI video input
 - Approach: static `POSE_LIBRARY` dict mapping pose keys to descriptive prompts; generates Telegram InlineKeyboardMarkup for pose selection UI
 - File: `services/pose_engine.py`
 
-### Component 8 — Video Generator
+### Component 6 — Video Generator
 Generates animated fashion videos from a try-on result image.
 - Input: try-on result image URL, pose prompt, duration (5 or 10s)
 - Output: MP4 URL (stored in R2)
 - Approach: sends result image + prompt to PiAPI Kling video generation; 9:16 aspect ratio for mobile/reels; polls until complete; uploads MP4 to R2
 - File: `services/video_generator.py`
 
-### Component 9 — Usage Tracker / Rate Limiter
+### Component 7 — Usage Tracker / Rate Limiter
 Enforces per-user daily limits and per-request cooldown.
 - Input: user_id, action type (tryon / video)
 - Output: bool (allowed or not), remaining quota
 - Approach: Redis INCR with EXPIREAT end-of-day for daily counters; Redis SET NX with 5s TTL for per-request cooldown
 - File: `bot/middleware/rate_limit.py`
 
-### Component 10 — Celery Workers
+### Component 8 — Celery Workers
 Executes long-running tasks (try-on, video) outside the request cycle.
 - Input: user_id, image URLs, chat_id (passed as task args)
 - Output: result delivered to user via bot.send_photo() / send_video()
 - Approach: Redis as broker (DB 0) and result backend (DB 1); tasks are synchronous wrappers using `asyncio.run()` at the boundary; max 3 retries on transient failure
 - File: `workers/celery_app.py`, `workers/tasks/`
 
-### Component 11 — Telegram Bot *(future phase)*
+### Component 9 — Telegram Bot *(future phase)*
 Handles conversation flow, image collection, and result delivery.
 - Input: Telegram Update (photo, command, callback query)
 - Output: messages, inline keyboards, images, videos sent to user
@@ -103,14 +89,12 @@ Handles conversation flow, image collection, and result delivery.
 3. `services/image_processor.py` ✅
 4. `services/model_generator.py` ✅
 5. `api/main.py` + `api/routers/model.py` ✅
-6. `clients/storage_client.py`
-7. `services/asset_storage.py`
-8. `services/tryon_service.py`
-9. `workers/` — celery_app + tryon_tasks
+6. `services/tryon_service.py`
+7. `workers/` — celery_app + tryon_tasks
 
 **Phase 2 — Telegram Integration:**
-10. `bot/` — handlers, keyboards, states
-11. FastAPI webhook endpoint
+8. `bot/` — handlers, keyboards, states
+9. FastAPI webhook endpoint
 
 **Phase 3 — Advanced:**
 Pose engine, video generator, batch try-on, observability, scaling

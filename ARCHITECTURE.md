@@ -234,25 +234,7 @@ Maps `pose_key → prompt string` for injection into PiAPI video generation inpu
 
 ---
 
-### 8. Asset Storage Service (`services/asset_storage.py`)
-
-**Responsibility:** All Cloudflare R2 operations.
-
-**R2 key format:** `users/{user_id}/{type}/{uuid4}/{filename}`
-- `type`: `input` | `result` | `bundle`
-
-**Operations:**
-- `upload_image(bytes, user_id, filename) → url`
-- `upload_result(bytes, user_id, task_id) → url`
-- `create_zip_bundle(urls, user_id) → url` — downloads all URLs, ZIPs in memory, uploads once
-- `get_presigned_url(key, expires) → url` — 3600s for results, 86400s for bundles
-
-**R2 vs S3:** Zero egress fees — critical because workers frequently download from storage.
-The `storage_client.py` wrapper abstracts the boto3 details; switching to S3 requires only config change.
-
----
-
-### 9. Usage Tracker + Rate Limiter (`bot/middleware/rate_limit.py`)
+### 8. Usage Tracker + Rate Limiter (`bot/middleware/rate_limit.py`)
 
 **Responsibility:** Enforce per-user daily limits and per-request cooldown periods.
 
@@ -272,7 +254,7 @@ Returns remaining quota for display in `/status` command.
 
 ---
 
-### 10. Celery Workers (`workers/`)
+### 9. Celery Workers (`workers/`)
 
 **Responsibility:** Execute long-running tasks outside the HTTP request cycle.
 
@@ -355,16 +337,6 @@ User receives result image with secondary action keyboard:
 
 Check `x-ratelimit-remaining` response header to proactively back off before hitting account limits.
 
-### Cloudflare R2
-
-| | Detail |
-|---|---|
-| Client | `boto3` with `endpoint_url` pointing to R2 account endpoint |
-| Key operations | `put_object`, `get_object`, `generate_presigned_url`, `delete_object` |
-| Auth | R2 API token (Access Key ID + Secret Access Key) |
-| Egress fees | None — key cost advantage over AWS S3 |
-| Bucket access | Private — access via pre-signed URLs only |
-
 ### Telegram Bot API
 
 | | Detail |
@@ -389,10 +361,8 @@ Check `x-ratelimit-remaining` response header to proactively back off before hit
 | 1 | `core/` foundation | pydantic-settings, structlog, custom exceptions ✅ |
 | 2 | Redis client | asyncio pool, shared singleton |
 | 3 | PiAPI client | httpx, polling with back-off, retry on transport errors |
-| 4 | R2 storage client | boto3 + endpoint_url, pre-signed URLs |
-| 5 | Image processor | Pillow + rembg + python-magic ✅ |
-| 7 | Asset storage service | wraps storage client, key naming scheme |
-| 8 | Data models | UserSession, TryOnTask, UserProfile dataclasses |
+| 4 | Image processor | Pillow + rembg + python-magic ✅ |
+| 5 | Data models | UserSession, TryOnTask, UserProfile dataclasses |
 | 9 | Rate limiter | Redis NX lock + daily INCR counter |
 | 10 | Try-on service | orchestrates steps 4–7 |
 | 11 | Celery tasks | sync wrapper, asyncio.run boundary, user notification |

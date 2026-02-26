@@ -53,6 +53,7 @@ class PiAPIClient:
         model: str,
         task_type: str,
         input_payload: dict,
+        config: dict | None = None,
     ) -> str:
         """Submit a new task to PiAPI and return the task_id.
 
@@ -72,6 +73,8 @@ class PiAPIClient:
             "task_type": task_type,
             "input": input_payload,
         }
+        if config:
+            payload["config"] = config
 
         log = logger.bind(model=model, task_type=task_type)
         log.info("piapi_create_task")
@@ -150,8 +153,12 @@ class PiAPIClient:
                 return task_data
 
             if status_lower == "failed":
-                error_msg = task_data.get("error", {}).get("message", "Unknown error")
-                raise APIError(f"PiAPI task failed: {error_msg}")
+                error = task_data.get("error", {})
+                raw_msg = error.get("raw_message", "")
+                msg = error.get("message", "Unknown error")
+                full_msg = f"{msg} | raw: {raw_msg}" if raw_msg and raw_msg != msg else msg
+                log.error("piapi_task_failed", error=error)
+                raise APIError(f"PiAPI task failed: {full_msg}")
 
         raise TaskTimeoutError(
             f"Task did not complete after {max_attempts} attempts ({elapsed:.0f}s).",
@@ -164,11 +171,12 @@ class PiAPIClient:
         model: str,
         task_type: str,
         input_payload: dict,
+        config: dict | None = None,
     ) -> dict:
         """Create a task and poll until completion. Convenience method.
 
         Returns:
             Completed task data dict.
         """
-        task_id = await self.create_task(model, task_type, input_payload)
+        task_id = await self.create_task(model, task_type, input_payload, config=config)
         return await self.poll_task(task_id)
